@@ -1,0 +1,30 @@
+{
+    
+    "images": [
+        {
+        "id": "data id",
+        "file_name": "image name",
+        "width": "image-width",
+        "height": "image-height"
+        }
+    ],
+
+    "annotations": [
+        {
+        "id": "data id",
+        "image_id": "id of image",
+        "category_id": "detected category id",
+        "bbox": "coordinates of bounding box",
+        "area": "arear by box in int",
+        "segmentation": "the segmentation coordinates",
+        "iscrowd": 0
+        }
+    ],
+
+    "categories": [
+        {"id": "data id", "name": "category name"},
+        {"id": "data id", "name": "category name"},
+        {"id": "data id", "name": "category name"}
+    ]
+    
+}

@@ -1,0 +1,13 @@
+{
+    "description": "The following parameters are to automate the process of making new node and running the image",
+    "image_name": "samarth1999/aer-model",
+    "ssh_key_path": "/opt/ssh_keys/id_rsa",
+    "operating_system": "Ubuntu",
+    "gpu_required": "False",
+    "delete_node": "True",
+    "min_node_price": 20,
+    "max_node_price": 100,
+    "cpu_node_price": 3.5,
+    "gpu_specs_list": {"gpu_memory":16,"ram":50,"cpu":12,"disk_space":900},
+    "cpu_specs_list": {"ram":8,"cpu":4,"disk_space":100}
+}

@@ -57,7 +57,7 @@ if [ $pipeline == "sketch_to_video" ]; then
         source "$current_dir/$python_env_name/bin/activate"
         pip3 install -r "$current_dir/requirements.txt"
     else
-        source "$current_dir/$python_env_name/bin/activate"    
+        source "$current_dir/$python_env_name/bin/activate"
     fi
 
     # to download sketch images (COCOSketchy) data for detection transformer
@@ -66,7 +66,7 @@ if [ $pipeline == "sketch_to_video" ]; then
     echo "File Path: $detr_path/val2017.zip"
 
     if [ ! -d "$detr_path/val2017" ]; then
-        gdown --id 1U2g-RXo9ua45gxeSbgiAiaI8imoOi6fO -O "$detr_path"
+        python3 fetch_drive_data.py --drive-file-id="1U2g-RXo9ua45gxeSbgiAiaI8imoOi6fO" --data-name="DETR_DATA_ID" --google-auth-file="$data_path/advancingai-317cc04a12fb.json" --output-dir="$detr_path"
         tar -xvf "$detr_path/Scene.tar" -C "$detr_path"
         wget -P "$detr_path" "http://images.cocodataset.org/zips/val2017.zip"
         wget -P "$detr_path" "http://calvin.inf.ed.ac.uk/wp-content/uploads/data/cocostuffdataset/stuff_trainval2017.zip"

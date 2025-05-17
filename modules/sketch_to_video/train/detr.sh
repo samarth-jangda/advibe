@@ -19,11 +19,12 @@
 checkpoint_dir="$output_model_path/detr/checkpoints"
 cat <<EOF > "$output_model_path/detr/training_parameters.json"
 {
-"num_batches": 1,
-"train_batches": 10,
-"num_epochs": 25,
+"num_batches": 50,
+"train_batches": 1,
+"dataloader_batches": 25,
+"num_epochs": 200,
 "learning_rate": 1e-5,
-"weight_decay": 0.01,
+"weight_decay": 1e-4,
 "save_dir": "$checkpoint_dir",
 "log_interval": 10
 }

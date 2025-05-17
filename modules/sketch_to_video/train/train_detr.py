@@ -18,6 +18,7 @@ import multiprocessing as mp
 from functools import partial
 import torchvision.transforms as T
 from torch.utils.data import DataLoader
+from torch.cuda.amp import autocast, GradScaler
 from transformers import DetrForObjectDetection, DetrImageProcessor
 
 parser = argparse.ArgumentParser(description="",
@@ -42,10 +43,10 @@ parser.add_argument("--train-output-path", type=str, default="", required=True,
 args = parser.parse_args() 
 
 # testing parameters
-# tensor_json_path="/home/samarth-jangda/development/advibe/modules/data/module/general/detr/tensor_train_data.json"
+# train_tensor_json_path="/home/samarth-jangda/development/advibe/modules/data/module/general/detr/tensor_train_data.json"
 # validation_tensor_json_path="/home/samarth-jangda/development/advibe/modules/data/module/general/detr/tensor_valid_data.json"
 # data_path="/home/samarth-jangda/development/advibe/modules/data/module/general/detr/Scene/Sketch/paper_version"
-# training_args_file="/home/samarth-jangda/development/advibe/modules/data/lib/detr/trainng_parameters.json"
+# parameters_file_path="/home/samarth-jangda/development/advibe/modules/data/lib/detr/training_parameters.json"
 # train_output_path="/home/samarth-jangda/development/advibe/modules/data/lib/detr"
 
 
@@ -209,7 +210,7 @@ def collate_data(data):
         })
     max_class_label = 91  # max number of classes the model expects
     for label in batch_out['labels']:
-        label['class_labels'] = label['class_labels'] % max_class_label    
+        label['class_labels'] = label['class_labels'] % max_class_label
     return batch_out
 
 def validate_model(model,validation_data_path,train_args,device):
@@ -221,7 +222,7 @@ def validate_model(model,validation_data_path,train_args,device):
     for batch_files in tqdm(sorted(os.listdir(f"{validation_data_path}")),desc="Loading Batch Files"):
         with open(os.path.join(f"{validation_data_path}",batch_files), 'rb') as f:
             batch_file = pickle.load(f)
-        validation_dataset = ModelDataset(batch_file['encoded_data'])
+        validation_dataset = ModelDataset(batch_file['encoded_data'][:2])
         validation_dataloader = DataLoader(
             validation_dataset.samples,
             batch_size=train_args['training_batches'],
@@ -253,6 +254,7 @@ def train_model(device,train_data,validation_data_path,train_args,detr_model,opt
     1) Preparing the training arguments
     2) Carrying out the training loop
     """
+    # scaler = GradScaler()
     batch_performance={
         "epochs":[],
         "loss":[]
@@ -264,15 +266,20 @@ def train_model(device,train_data,validation_data_path,train_args,detr_model,opt
         for batch in train_data:
             optimizer.zero_grad()
             batch = check_batch_dtype(batch,device)
+            # with autocast():
             outputs = detr_model(**batch)
             loss = outputs.loss
             loss.backward()
             optimizer.step()
+            # scaled_loss = scaler.scale(loss)
+            # scaled_loss.backward()
+            # scaler.step(optimizer)
+            # scaler.update()
             total_loss += loss.item()
-        avg_loss = total_loss / len(train_data)
         batch_performance["epochs"].append(epoch)
+        avg_loss = total_loss / len(train_data)    
         batch_performance["loss"].append(avg_loss)
-        print(f"AverageLoss : {avg_loss}" )
+    print(f"AverageLoss : {avg_loss}" )
     
     # code to save the model of each batch
     model_output = os.path.join(processed_checkpoints,f"detr_checkpoint_{batch_filename}.pth")
@@ -314,25 +321,37 @@ def concatenate_model():
     
     """
 
-# def combine_batch(dataset_path,train_batches):
-#     """
-#     The following function is used to combine multiple batches
-#     as per required training batches.
-#     """
-#     batch_dataset=[]
-#     total_files = os.listdir(dataset_path)
-#     per_train_batch_data = len(total_files) / train_batches
-#     batch = {
-#         "encoded_data":[]
-#     }
-#     for i,batch_file in enumerate(total_files):
-#         with open(os.path.join(f"{dataset_path}",batch_file), 'rb') as f:
-#             batch_file = pickle.load(f)
-#         batch["encoded_data"].extend(batch_file['encoded_data']) 
-#         if i == per_train_batch_data:
-#             batch_dataset.append(batch)
-#             batch.clear()
-#     return batch_dataset
+def combine_batch(dataset_path,train_batches,train_batch_dir):
+    """
+    The following function is used to combine multiple batches
+    as per required training batches.
+    """
+    batch_index=0
+    file=0
+    # batch_dataset=[]
+    total_files = os.listdir(dataset_path)
+    per_train_batch_data = len(total_files) / train_batches
+    # batch = {
+    #     "encoded_data":[]
+    # }
+    os.mkdir(train_batch_dir)
+    batch_out = open(f"{train_batch_dir}/train{batch_index}.pkl", 'ab')
+    for i,batch_file in tqdm(enumerate(total_files),desc="Combining processed batches:"):
+        with open(os.path.join(f"{dataset_path}",batch_file), 'rb') as f:
+            batch_file = pickle.load(f)
+        for item in batch_file['encoded_data']:
+            pickle.dump(item,batch_out)    
+        del batch_file    
+        file += 1    
+        gc.collect()
+        # batch["encoded_data"].extend(batch_file['encoded_data']) 
+        if i >= per_train_batch_data:
+            batch_out.close()
+            batch_index+=1
+            file = 0
+            batch_out = open(f"{train_batch_dir}/train{batch_index}.pkl", 'ab')
+            per_train_batch_data += 5.0
+    # return batch_dataset
 
 def process_steps():
     """
@@ -350,6 +369,7 @@ def process_steps():
     training_args={
         "num_batches":train_args['num_batches'],
         "training_batches":train_args["train_batches"],
+        "dataloader_batches":train_args["dataloader_batches"],
         "num_epochs":train_args['num_epochs'],
         "learning_rate":train_args['learning_rate'],
         "weight_decay":train_args['weight_decay'],
@@ -399,25 +419,26 @@ def process_steps():
 
   # |----------------------------------------------------- Model Data Processing --------------------------------------------------|
 
-    if not os.path.exists(f"{args.train_output_path}/processing_batches/train"):
-        encoded_train_data = prepare_batches("train",train_data,training_args["num_batches"],processor,train_json)
+    if not os.path.exists(f"{args.train_output_path}/processing_batches/process_batches"):
+        encoded_train_data = prepare_batches("process_batches",train_data,training_args["num_batches"],processor,train_json)
     if not os.path.exists(f"{args.train_output_path}/processing_batches/valid"):
         encoded_valid_data = prepare_batches("valid",valid_data,training_args["num_batches"],processor,validation_json)
     # encoded_train_data = train_dataset.map(encode_data,fn_kwargs={"processor":processor,"json_data_file":train_json},remove_columns=["id","image_name","label_name"],num_proc=4)
     
 
-    # combine pkl files to educe number of batches
-    # train_batches = combine_batch(f"{train_output_path}/processing_batches/train",training_args["training_batches"])
+    # combine pkl files to reduce number of batches
+    if not os.path.exists(f"{args.train_output_path}/processing_batches/train"):
+        train_batches = combine_batch(f"{args.train_output_path}/processing_batches/process_batches",training_args["training_batches"],f"{args.train_output_path}/processing_batches/train")
 
     # |----------------------------------------------------- model training --------------------------------------------------------|
     for batch_files in tqdm(sorted(os.listdir(f"{args.train_output_path}/processing_batches/train")),desc="Loading Batch Files"):
         with open(os.path.join(f"{args.train_output_path}/processing_batches/train",batch_files), 'rb') as f:
             batch_file = pickle.load(f)
-            
-        train_dataset = ModelDataset(batch_file['encoded_data'][:2])
+        # print(batch_file)     
+        train_dataset = ModelDataset([batch_file])
         train_dataloader = DataLoader(
             train_dataset.samples,
-            batch_size=training_args["training_batches"],
+            batch_size=training_args["dataloader_batches"],
             shuffle=True,
             collate_fn=collate_data
         )
